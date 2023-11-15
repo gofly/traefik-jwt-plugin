@@ -28,20 +28,21 @@ import (
 
 // Config the plugin configuration.
 type Config struct {
-	OpaUrl             string
-	OpaAllowField      string
-	OpaBody            bool
-	OpaDebugMode       bool
-	PayloadFields      []string
-	Required           bool
-	Keys               []string
-	Alg                string
-	OpaHeaders         map[string]string
-	JwtHeaders         map[string]string
-	OpaResponseHeaders map[string]string
-	OpaHttpStatusField string
-	JwtCookieKey       string
-	JwtQueryKey        string
+	OpaUrl                string
+	OpaAllowField         string
+	OpaBody               bool
+	OpaDebugMode          bool
+	PayloadFields         []string
+	Required              bool
+	Keys                  []string
+	Alg                   string
+	OpaHeaders            map[string]string
+	JwtHeaders            map[string]string
+	OpaResponseHeaders    map[string]string
+	OpaHttpStatusField    string
+	JwtCookieKey          string
+	JwtQueryKey           string
+	TransformHeaderValues map[string]map[string]string
 }
 
 // CreateConfig creates a new OPA Config
@@ -55,22 +56,23 @@ func CreateConfig() *Config {
 
 // JwtPlugin contains the runtime config
 type JwtPlugin struct {
-	next               http.Handler
-	opaUrl             string
-	opaAllowField      string
-	opaBody            bool
-	opaDebugMode       bool
-	payloadFields      []string
-	required           bool
-	jwkEndpoints       []*url.URL
-	keys               map[string]interface{}
-	alg                string
-	opaHeaders         map[string]string
-	jwtHeaders         map[string]string
-	opaResponseHeaders map[string]string
-	opaHttpStatusField string
-	jwtCookieKey       string
-	jwtQueryKey        string
+	next                  http.Handler
+	opaUrl                string
+	opaAllowField         string
+	opaBody               bool
+	opaDebugMode          bool
+	payloadFields         []string
+	required              bool
+	jwkEndpoints          []*url.URL
+	keys                  map[string]interface{}
+	alg                   string
+	opaHeaders            map[string]string
+	jwtHeaders            map[string]string
+	opaResponseHeaders    map[string]string
+	opaHttpStatusField    string
+	jwtCookieKey          string
+	jwtQueryKey           string
+	transformHeaderValues map[string]map[string]string
 }
 
 // LogEvent contains a single log entry
@@ -163,21 +165,22 @@ type Response struct {
 // New creates a new plugin
 func New(_ context.Context, next http.Handler, config *Config, _ string) (http.Handler, error) {
 	jwtPlugin := &JwtPlugin{
-		next:               next,
-		opaUrl:             config.OpaUrl,
-		opaAllowField:      config.OpaAllowField,
-		opaBody:            config.OpaBody,
-		opaDebugMode:       config.OpaDebugMode,
-		payloadFields:      config.PayloadFields,
-		required:           config.Required,
-		alg:                config.Alg,
-		keys:               make(map[string]interface{}),
-		opaHeaders:         config.OpaHeaders,
-		jwtHeaders:         config.JwtHeaders,
-		opaResponseHeaders: config.OpaResponseHeaders,
-		opaHttpStatusField: config.OpaHttpStatusField,
-		jwtCookieKey:       config.JwtCookieKey,
-		jwtQueryKey:        config.JwtQueryKey,
+		next:                  next,
+		opaUrl:                config.OpaUrl,
+		opaAllowField:         config.OpaAllowField,
+		opaBody:               config.OpaBody,
+		opaDebugMode:          config.OpaDebugMode,
+		payloadFields:         config.PayloadFields,
+		required:              config.Required,
+		alg:                   config.Alg,
+		keys:                  make(map[string]interface{}),
+		opaHeaders:            config.OpaHeaders,
+		jwtHeaders:            config.JwtHeaders,
+		opaResponseHeaders:    config.OpaResponseHeaders,
+		opaHttpStatusField:    config.OpaHttpStatusField,
+		jwtCookieKey:          config.JwtCookieKey,
+		jwtQueryKey:           config.JwtQueryKey,
+		transformHeaderValues: config.TransformHeaderValues,
 	}
 	if len(config.Keys) > 0 {
 		if err := jwtPlugin.ParseKeys(config.Keys); err != nil {
@@ -403,7 +406,13 @@ func (jwtPlugin *JwtPlugin) CheckToken(request *http.Request, rw http.ResponseWr
 		for k, v := range jwtPlugin.jwtHeaders {
 			_, ok := jwtToken.Payload[v]
 			if ok {
-				request.Header.Add(k, fmt.Sprint(jwtToken.Payload[v]))
+				val := fmt.Sprint(jwtToken.Payload[v])
+				if mapping, ok := jwtPlugin.transformHeaderValues[k]; ok {
+					if transVal, ok := mapping[val]; ok {
+						val = transVal
+					}
+				}
+				request.Header.Add(k, val)
 			}
 		}
 	}

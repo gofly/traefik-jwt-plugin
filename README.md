@@ -100,9 +100,19 @@ spec:
       JwtCookieKey: jwt
       TransformHeaderValues:
         X-Pid:
-          '50d67d0c-7056-46bb-b125-09d0e73218a5': 'TenantPoolId1'
-          '277ba14b-21cf-41d4-8942-bf7cbd480f45': 'TenantPoolId2'
-          'ca37bbd8-0c4c-40c4-84c8-b921a01ea715': 'TenantPoolId3'
+          '50d67d0c-7056-46bb-b125-09d0e73218a5':
+            Conditions:
+              X-Forwarded-Host: regexp:localhost:.+
+            ValueReplace: TenantPoolId1
+          '277ba14b-21cf-41d4-8942-bf7cbd480f45':
+            Conditions:
+              X-Forwarded-Host: localhost:50080
+            ValueReplace: TenantPoolId2
+          '68e9a8e0-44d3-4b25-b859-4e22bf87bbe5':
+            Conditions:
+              X-Forwarded-Host: test.com
+            ValueReplace: TenantPoolId3
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

@@ -21,10 +21,33 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+type HeaderName = string
+type HeaderValue = string
+type TransformHeaderValueConfig struct {
+	Conditions    map[HeaderName]HeaderValue
+	ValueReplace  string
+	regConditions map[HeaderName]*regexp.Regexp
+}
+
+func (c *TransformHeaderValueConfig) CompileConditions() (err error) {
+	c.regConditions = make(map[string]*regexp.Regexp, len(c.Conditions))
+	for k, v := range c.Conditions {
+		if strings.HasPrefix(v, "regexp:") {
+			c.regConditions[k], err = regexp.Compile(strings.TrimPrefix(v, "regexp:"))
+			if err != nil {
+				return
+			}
+			delete(c.Conditions, k)
+		}
+	}
+	return
+}
 
 // Config the plugin configuration.
 type Config struct {
@@ -42,7 +65,7 @@ type Config struct {
 	OpaHttpStatusField    string
 	JwtCookieKey          string
 	JwtQueryKey           string
-	TransformHeaderValues map[string]map[string]string
+	TransformHeaderValues map[HeaderName]map[HeaderValue]TransformHeaderValueConfig
 }
 
 // CreateConfig creates a new OPA Config
@@ -72,7 +95,7 @@ type JwtPlugin struct {
 	opaHttpStatusField    string
 	jwtCookieKey          string
 	jwtQueryKey           string
-	transformHeaderValues map[string]map[string]string
+	transformHeaderValues map[HeaderName]map[HeaderValue]TransformHeaderValueConfig
 }
 
 // LogEvent contains a single log entry
@@ -181,6 +204,14 @@ func New(_ context.Context, next http.Handler, config *Config, _ string) (http.H
 		jwtCookieKey:          config.JwtCookieKey,
 		jwtQueryKey:           config.JwtQueryKey,
 		transformHeaderValues: config.TransformHeaderValues,
+	}
+	for _, v1 := range jwtPlugin.transformHeaderValues {
+		for _, v2 := range v1 {
+			err := v2.CompileConditions()
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	if len(config.Keys) > 0 {
 		if err := jwtPlugin.ParseKeys(config.Keys); err != nil {
@@ -343,7 +374,39 @@ func (jwtPlugin *JwtPlugin) ServeHTTP(rw http.ResponseWriter, request *http.Requ
 		}
 		return
 	}
+	jwtPlugin.TransformHeader(request)
 	jwtPlugin.next.ServeHTTP(rw, request)
+}
+
+func (jwtPlugin *JwtPlugin) TransformHeader(request *http.Request) {
+	for transHeaderName, transConfigs := range jwtPlugin.transformHeaderValues {
+		transHeaderValue := request.Header.Get(transHeaderName)
+		if transHeaderValue == "" {
+			continue
+		}
+		if transConfig, ok := transConfigs[transHeaderValue]; ok {
+			match := true
+			for condHeaderName, condHeaderVal := range transConfig.Conditions {
+				headerVal := request.Header.Get(condHeaderName)
+				if headerVal != condHeaderVal {
+					match = false
+					break
+				}
+			}
+			if match {
+				for condHeaderName, condHeaderReg := range transConfig.regConditions {
+					headerVal := request.Header.Get(condHeaderName)
+					if !condHeaderReg.MatchString(headerVal) {
+						match = false
+						break
+					}
+				}
+			}
+			if match {
+				request.Header.Set(transHeaderName, transConfig.ValueReplace)
+			}
+		}
+	}
 }
 
 func (jwtPlugin *JwtPlugin) CheckToken(request *http.Request, rw http.ResponseWriter) (int, error) {
@@ -406,13 +469,7 @@ func (jwtPlugin *JwtPlugin) CheckToken(request *http.Request, rw http.ResponseWr
 		for k, v := range jwtPlugin.jwtHeaders {
 			_, ok := jwtToken.Payload[v]
 			if ok {
-				val := fmt.Sprint(jwtToken.Payload[v])
-				if mapping, ok := jwtPlugin.transformHeaderValues[k]; ok {
-					if transVal, ok := mapping[val]; ok {
-						val = transVal
-					}
-				}
-				request.Header.Add(k, val)
+				request.Header.Add(k, fmt.Sprint(jwtToken.Payload[v]))
 			}
 		}
 	}

@@ -58,6 +58,7 @@ OpaResponseHeaders | Map used to inject OPA result fields as HTTP response heade
 OpaHttpStatusField | Field in OPA JSON result, which contains int or string HTTP status code that will be returned in case of disallowed OPA response. Accepted range is >= 300 and < 600. Only 1st level keys from OPA document are supported.
 JwtCookieKey | Name of the cookie to extract JWT if not found in `Authorization` header.
 JwtQueryKey | Name of the query parameter to extract JWT if not found in `Authorization` header or in the specified cookie.
+TransformHeaderValues | Map used to transform values in JwtHeaders
 
 ### Example configuration
 
@@ -97,6 +98,11 @@ spec:
         X-Allowed: allow
       OpaHttpStatusField: allow_status_code
       JwtCookieKey: jwt
+      TransformHeaderValues:
+        X-Pid:
+          '50d67d0c-7056-46bb-b125-09d0e73218a5': 'TenantPoolId1'
+          '277ba14b-21cf-41d4-8942-bf7cbd480f45': 'TenantPoolId2'
+          'ca37bbd8-0c4c-40c4-84c8-b921a01ea715': 'TenantPoolId3'
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
